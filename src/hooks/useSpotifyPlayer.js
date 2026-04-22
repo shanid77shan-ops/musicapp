@@ -70,9 +70,9 @@ export function useSpotifyPlayer() {
         setPlayerState(state);
       });
 
-      // Non-Premium accounts hit this error
-      player.addListener('authentication_error', ({ message }) => {
-        setError(`Auth error: ${message}`);
+      // Fired when the token lacks required scopes (e.g. "streaming")
+      player.addListener('authentication_error', () => {
+        setError('REAUTH_REQUIRED');
       });
 
       player.addListener('account_error', ({ message }) => {

@@ -144,12 +144,29 @@ function MusicApp({ onLogout }) {
       {/* ── Main content ── */}
       <main className="px-6 pb-36 max-w-3xl mx-auto">
 
-        {/* Player error (Premium required, etc.) */}
+        {/* Player error (scope missing, Premium required, etc.) */}
         {playerError && (
           <div className="mb-4 px-4 py-3 rounded-lg bg-yellow-900/40 border border-yellow-700/50
                           text-yellow-300 text-sm flex items-start gap-3">
             <span className="text-lg leading-none mt-0.5">⚠️</span>
-            <p>{playerError}</p>
+            {playerError === 'REAUTH_REQUIRED' ? (
+              <div>
+                <p className="font-medium">New permissions required</p>
+                <p className="text-yellow-400 text-xs mt-0.5">
+                  Your session was created before playback permissions were added.
+                  Please reconnect to grant the missing scopes.
+                </p>
+                <button
+                  onClick={onLogout}
+                  className="mt-2 px-3 py-1 text-xs rounded-full bg-yellow-500 hover:bg-yellow-400
+                             text-black font-semibold transition"
+                >
+                  Reconnect Spotify →
+                </button>
+              </div>
+            ) : (
+              <p>{playerError}</p>
+            )}
           </div>
         )}
 
