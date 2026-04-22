@@ -54,11 +54,28 @@ export function useSpotifyPlayer() {
       });
 
       // ── SDK event listeners ─────────────────────────────────────────────
-      player.addListener('ready', ({ device_id }) => {
+      player.addListener('ready', async ({ device_id }) => {
         deviceRef.current = device_id;
         setDeviceId(device_id);
         setIsReady(true);
         setError(null);
+
+        // Verify the token has the streaming scope by checking /v1/me
+        try {
+          const token = await getValidToken();
+          const scopeRes = await fetch('https://api.spotify.com/v1/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (scopeRes.status === 401) {
+            setError('REAUTH_REQUIRED');
+            return;
+          }
+          // Check if the token was issued with streaming scope
+          // Spotify doesn't expose granted scopes from /me, so we probe the SDK check_scope
+          // Instead, mark ready and let playTrack catch the 401 if scope is missing
+        } catch {
+          // Network error — ignore, playTrack will surface the real error
+        }
       });
 
       player.addListener('not_ready', () => {
@@ -73,6 +90,14 @@ export function useSpotifyPlayer() {
       // Fired when the token lacks required scopes (e.g. "streaming")
       player.addListener('authentication_error', () => {
         setError('REAUTH_REQUIRED');
+      });
+
+      player.addListener('initialization_error', ({ message }) => {
+        if (message?.toLowerCase().includes('permission') || message?.toLowerCase().includes('scope')) {
+          setError('REAUTH_REQUIRED');
+        } else {
+          setError(message);
+        }
       });
 
       player.addListener('account_error', ({ message }) => {
@@ -141,8 +166,10 @@ export function useSpotifyPlayer() {
       if (!res.ok && res.status !== 204) {
         const body = await res.json().catch(() => ({}));
         const msg  = body?.error?.message ?? `Playback failed (${res.status})`;
-        // 403 means the account is not Premium
-        if (res.status === 403) {
+        if (res.status === 401) {
+          // Token missing required scopes (e.g. streaming) — must re-auth
+          setError('REAUTH_REQUIRED');
+        } else if (res.status === 403) {
           setError('Spotify Premium is required for full-track playback.');
         } else {
           setError(msg);
