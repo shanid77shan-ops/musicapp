@@ -81,10 +81,9 @@ const _debouncedSearch = debounce(async (query) => {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    _set({
-      songs:     (data.tracks?.items ?? []).map(mapTrack),
-      isLoading: false,
-    });
+    const songs = (data.tracks?.items ?? []).map(mapTrack);
+    _set({ songs, isLoading: false });
+    if (songs.length > 0) _get().addToHistory(query);
 
   } catch (err) {
     console.error('[Spotify search] status:', err.response?.status);
@@ -197,22 +196,76 @@ const useMusicStore = create(
           _debouncedSearch(query);
         },
 
-        /**
-         * Directly invoke the debounced search (skips the query state update).
-         * Useful if you want to trigger a search without changing the visible input.
-         */
         searchTracks: (query) => _debouncedSearch(query),
+
+        // ── Search history ─────────────────────────────────────────────────────
+        searchHistory: [],
+
+        addToHistory: (query) => {
+          const q = query.trim();
+          if (q.length < 2) return;
+          set((state) => ({
+            searchHistory: [q, ...state.searchHistory.filter((h) => h !== q)].slice(0, 10),
+          }));
+        },
+
+        clearHistory: () => set({ searchHistory: [] }),
+
+        // ── Playlists ──────────────────────────────────────────────────────────
+        playlists: [],
+
+        createPlaylist: (name) => {
+          const id = Date.now().toString();
+          set((state) => ({
+            playlists: [...state.playlists, { id, name, songs: [] }],
+          }));
+          return id;
+        },
+
+        addSongToPlaylist: (playlistId, song) => {
+          set((state) => ({
+            playlists: state.playlists.map((p) =>
+              p.id === playlistId && !p.songs.find((s) => s.id === song.id)
+                ? { ...p, songs: [...p.songs, song] }
+                : p,
+            ),
+          }));
+        },
+
+        removeSongFromPlaylist: (playlistId, songId) => {
+          set((state) => ({
+            playlists: state.playlists.map((p) =>
+              p.id === playlistId
+                ? { ...p, songs: p.songs.filter((s) => s.id !== songId) }
+                : p,
+            ),
+          }));
+        },
+
+        deletePlaylist: (playlistId) => {
+          set((state) => ({
+            playlists: state.playlists.filter((p) => p.id !== playlistId),
+          }));
+        },
+
+        renamePlaylist: (playlistId, name) => {
+          set((state) => ({
+            playlists: state.playlists.map((p) =>
+              p.id === playlistId ? { ...p, name } : p,
+            ),
+          }));
+        },
       };
     },
 
     {
-      name: 'musicapp-auth',   // localStorage key
-
-      // Only persist auth tokens — search state should always start fresh
+      name: 'musicapp-auth',
       partialize: (state) => ({
-        accessToken:  state.accessToken,
-        refreshToken: state.refreshToken,
-        expiryTime:   state.expiryTime,
+        accessToken:   state.accessToken,
+        refreshToken:  state.refreshToken,
+        expiryTime:    state.expiryTime,
+        searchHistory: state.searchHistory,
+        playlists:     state.playlists,
       }),
     },
   ),
