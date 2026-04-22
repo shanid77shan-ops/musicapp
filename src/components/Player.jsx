@@ -10,7 +10,7 @@ import { formatDuration } from "../data/songs";
  *   isReady      — SDK device connected and ready
  *   onPause / onResume / onSeek(ms) / onVolume(0-1) / onNext / onPrev
  */
-function Player({ currentSong, playerState, isReady, onPause, onResume, onSeek, onVolume, onNext, onPrev }) {
+function Player({ currentSong, playerState, isReady, onPause, onResume, onSeek, onVolume, onNext, onPrev, onAddToPlaylist }) {
   const [volume, setVolume] = useState(0.8);
 
   // ── Derive display values from SDK state ───────────────────────────────────
@@ -120,6 +120,19 @@ function Player({ currentSong, playerState, isReady, onPause, onResume, onSeek, 
             <path d="M6 18l8.5-6L6 6v12zm2.5-6 8.5 6V6z" />
           </svg>
         </button>
+
+        {/* Add to playlist */}
+        {currentSong && onAddToPlaylist && (
+          <button
+            onClick={() => onAddToPlaylist(currentSong)}
+            title="Add to playlist"
+            className="text-gray-400 hover:text-purple-400 transition p-2"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+          </button>
+        )}
 
         {/* Volume — hidden on mobile */}
         <div className="hidden sm:flex items-center gap-2 w-32">
