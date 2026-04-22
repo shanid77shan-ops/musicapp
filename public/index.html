@@ -25,7 +25,12 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>MusicApp</title>
-    <!-- Spotify Web Playback SDK — must load before React boots -->
+    <!-- Queue SDK ready callback so React hook can override it after mount -->
+    <script>
+      window.onSpotifyWebPlaybackSDKReady = function () {
+        window._spotifySDKReady = true;
+      };
+    </script>
     <script src="https://sdk.scdn.co/spotify-player.js"></script>
   </head>
   <body>

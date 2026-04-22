@@ -114,11 +114,15 @@ export function useSpotifyPlayer() {
       playerRef.current = player;
     }
 
-    // SDK may already be loaded (e.g. hot-reload) or fire later
-    if (window.Spotify?.Player) {
+    // SDK may already be ready (flag set by index.html placeholder callback),
+    // already loaded (hot-reload), or still loading — cover all three cases
+    if (window._spotifySDKReady || window.Spotify?.Player) {
       initPlayer();
     } else {
-      window.onSpotifyWebPlaybackSDKReady = initPlayer;
+      window.onSpotifyWebPlaybackSDKReady = () => {
+        window._spotifySDKReady = true;
+        initPlayer();
+      };
     }
 
     return () => {

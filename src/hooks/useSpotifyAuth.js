@@ -52,16 +52,20 @@ export function useSpotifyAuth() {
 
   // ── Handle the /callback redirect on mount ─────────────────────────────────
   useEffect(() => {
-    // CRA serves index.html for all paths, so we detect the callback by URL
-    const url     = new URL(window.location.href);
+    const url        = new URL(window.location.href);
     const isCallback = url.pathname === '/callback';
+    const hasCode    = url.searchParams.has('code');
 
-    if (isCallback) {
+    // Only attempt exchange if we're on /callback with a code AND
+    // a verifier exists — prevents double-exchange on page refresh
+    if (isCallback && hasCode && sessionStorage.getItem('spotify_pkce_verifier')) {
       _handleCallback(url, setTokens).catch((err) => {
         console.error('[useSpotifyAuth] Callback failed:', err.message);
-        // Return to home so the user can try logging in again
         window.history.replaceState({}, '', '/');
       });
+    } else if (isCallback) {
+      // No verifier means stale callback URL — just go home
+      window.history.replaceState({}, '', '/');
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
