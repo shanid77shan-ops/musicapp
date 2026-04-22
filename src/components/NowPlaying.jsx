@@ -15,7 +15,7 @@ function NowPlaying({ song }) {
   return (
     <div className="flex items-center gap-3 w-48">
       <img
-        src={song.thumbnail}
+        src={song.albumArt}
         alt={song.title}
         className="w-10 h-10 rounded-lg object-cover flex-shrink-0 shadow"
       />
