@@ -93,7 +93,10 @@ export function useSpotifyAuth() {
     });
 
     // 4. Full-page redirect to Spotify login
-    window.location.href = `https://accounts.spotify.com/authorize?${params}`;
+    const authUrl = `https://accounts.spotify.com/authorize?${params}`;
+    console.log('[Auth] Redirect URI being sent:', REDIRECT_URI);
+    console.log('[Auth] Full auth URL:', authUrl);
+    window.location.href = authUrl;
   }, []);
 
   // ── Logout ────────────────────────────────────────────────────────────────
