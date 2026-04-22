@@ -70,8 +70,6 @@ function MusicApp({ onLogout }) {
     resume,
     seek,
     setVolume,
-    previousTrack,
-    nextTrack,
   } = useSpotifyPlayer();
 
   // ── Song selection ─────────────────────────────────────────────────────────
@@ -99,16 +97,6 @@ function MusicApp({ onLogout }) {
     setCurrentSong(prev);
     playTrack(prev.id);
   }
-
-  // ── Auto-advance when track ends ───────────────────────────────────────────
-  const trackEnded =
-    playerState &&
-    !playerState.paused &&
-    playerState.position === 0 &&
-    playerState.track_window?.current_track == null;
-
-  // (Spotify SDK fires a paused state at position 0 when a track ends.
-  //  We let the user hit Next manually — auto-advance via queue is a Spotify feature.)
 
   const subtitle = isLoading
     ? 'Searching Spotify…'
