@@ -17,7 +17,7 @@ function LoginScreen({ onLogin }) {
       <div>
         <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400
                        bg-clip-text text-transparent mb-3">
-          🎵 MusicApp
+          🎵 Jokerly
         </h1>
         <p className="text-gray-400 max-w-sm">
           Search and stream full tracks via Spotify.
@@ -108,7 +108,7 @@ function MusicApp({ onLogout }) {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400
                            bg-clip-text text-transparent">
-              🎵 MusicApp
+              🎵 Jokerly
             </h1>
             <div className="flex items-center gap-3">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${

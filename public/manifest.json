@@ -1,6 +1,6 @@
 {
-  "name": "MusicApp – Stream with Spotify",
-  "short_name": "MusicApp",
+  "name": "Jokerly – Stream with Spotify",
+  "short_name": "Jokerly",
   "description": "Search and stream full tracks via Spotify. Create playlists, pin favourites, and enjoy music anywhere.",
   "start_url": "/",
   "scope": "/",
@@ -66,14 +66,14 @@
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "MusicApp on desktop"
+      "label": "Jokerly on desktop"
     },
     {
       "src": "icons/screenshot-narrow.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "MusicApp on mobile"
+      "label": "Jokerly on mobile"
     }
   ],
   "shortcuts": [

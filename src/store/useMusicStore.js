@@ -283,7 +283,7 @@ const useMusicStore = create(
     },
 
     {
-      name: 'musicapp-auth',
+      name: 'jokerly-auth',
       // Only persist auth tokens + search history; playlists live in Supabase
       partialize: (state) => ({
         accessToken:       state.accessToken,
