@@ -15,10 +15,13 @@ function LoginScreen({ onLogin }) {
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-purple-950
                     flex flex-col items-center justify-center gap-8 px-6 text-center">
       <div>
-        <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400
-                       bg-clip-text text-transparent mb-3">
-          🎵 Jokerly
-        </h1>
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <img src="/Icon.png" alt="Jokerly" className="w-14 h-14 rounded-2xl shadow-lg shadow-purple-900/40" />
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400
+                         bg-clip-text text-transparent">
+            Jokerly
+          </h1>
+        </div>
         <p className="text-gray-400 max-w-sm">
           Search and stream full tracks via Spotify.
           A Premium account is required for full playback.
@@ -106,10 +109,13 @@ function MusicApp({ onLogout }) {
       <header className="px-6 pt-8 pb-2">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400
-                           bg-clip-text text-transparent">
-              🎵 Jokerly
-            </h1>
+            <div className="flex items-center gap-2">
+              <img src="/Icon.png" alt="Jokerly" className="w-8 h-8 rounded-xl" />
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400
+                             bg-clip-text text-transparent">
+                Jokerly
+              </h1>
+            </div>
             <div className="flex items-center gap-3">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${
                 isReady
