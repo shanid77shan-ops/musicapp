@@ -1,156 +1,93 @@
 /**
  * useMusicStore.js — global Zustand store
  *
- * Owns two concerns:
- *   1. AUTH   — accessToken, refreshToken, expiryTime (persisted to localStorage)
- *   2. SEARCH — query, songs[], isLoading, error
- *
- * Auth tokens survive page refresh via the `persist` middleware.
- * Search state is intentionally NOT persisted (always re-fetch on load).
- *
- * The `searchTracks` action is debounced (500 ms) at the store level so every
- * caller (SearchBar, useEffect, etc.) shares the same debounce timer.
+ * Concerns:
+ *   1. AUTH      — accessToken, refreshToken, expiryTime (persisted to localStorage)
+ *   2. SEARCH    — query, songs[], isLoading, error
+ *   3. HISTORY   — recent search queries (persisted to localStorage)
+ *   4. PLAYLISTS — stored in Supabase; in-memory list kept for UI rendering
  */
 
-import { create }    from 'zustand';
-import { persist }   from 'zustand/middleware';
-import debounce      from 'lodash.debounce';
-import axios         from 'axios';
+import { create }   from 'zustand';
+import { persist }  from 'zustand/middleware';
+import debounce     from 'lodash.debounce';
+import axios        from 'axios';
+import * as svc     from '../services/playlistService';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const SPOTIFY_API      = 'https://api.spotify.com/v1';
+const SPOTIFY_API       = 'https://api.spotify.com/v1';
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
+const CLIENT_ID         = process.env.REACT_APP_SPOTIFY_CLIENT_ID;
 
-// CRA exposes env vars via process.env.REACT_APP_*
-const CLIENT_ID = process.env.REACT_APP_SPOTIFY_CLIENT_ID;
-
-// ─── Data mapper ─────────────────────────────────────────────────────────────
-
-/**
- * Converts a raw Spotify track object into the flat shape our UI expects.
- *
- * Spotify track  →  our Song object
- * ──────────────────────────────────────────────────────────────
- * track.id                  →  id
- * track.name                →  title
- * track.artists[].name      →  artist   (joined with ", ")
- * track.album.images        →  albumArt (300 px preferred)
- * track.preview_url         →  previewUrl  (30-sec MP3 or null)
- * track.album.name          →  album    (needed by SongList)
- * track.duration_ms / 1000  →  duration (needed by Player)
- * track.external_urls.spotify → spotifyUrl
- */
+// ─── Track mapper ─────────────────────────────────────────────────────────────
 function mapTrack(track) {
   const images = track.album?.images ?? [];
   return {
     id:         track.id,
     title:      track.name,
     artist:     track.artists.map((a) => a.name).join(', '),
-    albumArt:   (images[1] ?? images[0])?.url ?? null,   // ~300px preferred
-    previewUrl: track.preview_url,                        // null for some tracks
+    albumArt:   (images[1] ?? images[0])?.url ?? null,
+    previewUrl: track.preview_url,
     album:      track.album?.name ?? '',
     duration:   Math.floor((track.duration_ms ?? 0) / 1000),
     spotifyUrl: track.external_urls?.spotify ?? null,
   };
 }
 
-// ─── Debounced search (created once, shared by all callers) ──────────────────
-//
-// Defined outside `create()` so the 500 ms timer is never reset by React
-// re-renders or store rehydration.  We use a two-argument signature so the
-// function can call `set` and `get` after being created.
-
-let _set, _get;   // bound when the store initialises (see inside create() below)
+// ─── Module-level refs bound inside create() ──────────────────────────────────
+let _set, _get;
 
 const _debouncedSearch = debounce(async (query) => {
-  // Require at least 2 characters — Spotify rejects single-char queries
   if (query.trim().length < 2) {
     _set({ songs: [], isLoading: false, error: null });
     return;
   }
-
   _set({ isLoading: true, error: null });
-
   try {
-    // Always use a valid (possibly refreshed) token
     const token = await _get().getValidToken();
-
     const { data } = await axios.get(`${SPOTIFY_API}/search`, {
       params:  { q: query, type: 'track' },
       headers: { Authorization: `Bearer ${token}` },
     });
-
     const songs = (data.tracks?.items ?? []).map(mapTrack);
     _set({ songs, isLoading: false });
     if (songs.length > 0) _get().addToHistory(query);
-
   } catch (err) {
-    console.error('[Spotify search] status:', err.response?.status);
-    console.error('[Spotify search] body:',   err.response?.data);
-    // Surface a readable message to the UI
-    const message =
-      err.response?.data?.error?.message ??
-      err.message ??
-      'An unexpected error occurred';
-
+    const message = err.response?.data?.error?.message ?? err.message ?? 'Search failed';
     _set({ error: message, songs: [], isLoading: false });
   }
-}, 500);   // ← 500 ms debounce as requested
+}, 500);
 
 // ─── Store ────────────────────────────────────────────────────────────────────
-
 const useMusicStore = create(
   persist(
     (set, get) => {
-      // Expose set/get to the module-level debounced function
       _set = set;
       _get = get;
 
       return {
-        // ── Auth state ─────────────────────────────────────────────────────────
-        accessToken:  null,   // Spotify Bearer token
-        refreshToken: null,   // Used to get a new accessToken without re-login
-        expiryTime:   null,   // Absolute timestamp: Date.now() + expires_in * 1000
+        // ── Auth ───────────────────────────────────────────────────────────────
+        accessToken:   null,
+        refreshToken:  null,
+        expiryTime:    null,
+        spotifyUserId: null,   // fetched from /v1/me after login
 
-        // ── Search state (NOT persisted — see partialize below) ───────────────
-        songs:     [],
-        isLoading: false,
-        error:     null,
-        query:     '',
-
-        // ── Auth actions ───────────────────────────────────────────────────────
-
-        /** Store all three token fields at once */
         setTokens: ({ accessToken, refreshToken, expiryTime }) =>
           set({ accessToken, refreshToken, expiryTime }),
 
-        /** Wipe tokens on logout */
         clearTokens: () =>
-          set({ accessToken: null, refreshToken: null, expiryTime: null }),
+          set({
+            accessToken: null, refreshToken: null, expiryTime: null,
+            spotifyUserId: null, playlists: [],
+          }),
 
-        /**
-         * Returns true when the current access token is missing or within
-         * 60 seconds of expiry.  The 60-second buffer prevents using a token
-         * that expires mid-request.
-         */
         isTokenExpired: () => {
           const { expiryTime } = get();
           return !expiryTime || Date.now() >= expiryTime - 60_000;
         },
 
-        /**
-         * Exchanges the stored refreshToken for a new accessToken.
-         * Spotify may also rotate the refreshToken; we always save the latest one.
-         * Throws if no refreshToken is available (user must log in again).
-         */
         refreshAccessToken: async () => {
           const { refreshToken } = get();
-          if (!refreshToken) {
-            throw new Error('Session expired — please log in again');
-          }
-
-          // PKCE refresh: only needs client_id (no client_secret in the browser)
+          if (!refreshToken) throw new Error('Session expired — please log in again');
           const { data } = await axios.post(
             SPOTIFY_TOKEN_URL,
             new URLSearchParams({
@@ -160,112 +97,169 @@ const useMusicStore = create(
             }),
             { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
           );
-
-          const newExpiry = Date.now() + data.expires_in * 1000;
-
           get().setTokens({
             accessToken:  data.access_token,
-            // Spotify may issue a new refresh token; fall back to the old one
             refreshToken: data.refresh_token ?? refreshToken,
-            expiryTime:   newExpiry,
+            expiryTime:   Date.now() + data.expires_in * 1000,
           });
-
           return data.access_token;
         },
 
-        /**
-         * Returns a guaranteed-valid access token.
-         * Refreshes automatically when expired; throws if refresh fails.
-         */
         getValidToken: async () => {
           const { accessToken, isTokenExpired, refreshAccessToken } = get();
-          if (!accessToken || isTokenExpired()) {
-            return refreshAccessToken();   // awaits internally
-          }
+          if (!accessToken || isTokenExpired()) return refreshAccessToken();
           return accessToken;
         },
 
-        // ── Search actions ─────────────────────────────────────────────────────
-
-        /**
-         * Update the search query and trigger a debounced Spotify API call.
-         * Call this from SearchBar's onChange handler.
-         */
-        setQuery: (query) => {
-          set({ query });
-          _debouncedSearch(query);
+        // ── User profile (Spotify ID) ──────────────────────────────────────────
+        fetchUserProfile: async () => {
+          try {
+            const token = await get().getValidToken();
+            const { data } = await axios.get(`${SPOTIFY_API}/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            set({ spotifyUserId: data.id });
+            await get().loadPlaylists(data.id);
+          } catch (err) {
+            console.error('[useMusicStore] fetchUserProfile failed:', err.message);
+          }
         },
 
+        // ── Search ─────────────────────────────────────────────────────────────
+        songs:     [],
+        isLoading: false,
+        error:     null,
+        query:     '',
+
+        setQuery: (query) => { set({ query }); _debouncedSearch(query); },
         searchTracks: (query) => _debouncedSearch(query),
 
-        // ── Search history ─────────────────────────────────────────────────────
+        // ── Search history (persisted to localStorage) ─────────────────────────
         searchHistory: [],
 
         addToHistory: (query) => {
           const q = query.trim();
           if (q.length < 2) return;
-          set((state) => ({
-            searchHistory: [q, ...state.searchHistory.filter((h) => h !== q)].slice(0, 10),
+          set((s) => ({
+            searchHistory: [q, ...s.searchHistory.filter((h) => h !== q)].slice(0, 10),
           }));
         },
 
         clearHistory: () => set({ searchHistory: [] }),
 
-        // ── Playlists ──────────────────────────────────────────────────────────
-        playlists: [],
+        // ── Playlists (Supabase) ───────────────────────────────────────────────
+        playlists:        [],
+        playlistsLoading: false,
 
-        createPlaylist: (name) => {
-          const id = Date.now().toString();
-          set((state) => ({
-            playlists: [...state.playlists, { id, name, songs: [] }],
-          }));
+        /** Load all playlists from Supabase for the given userId */
+        loadPlaylists: async (userId) => {
+          const uid = userId ?? get().spotifyUserId;
+          if (!uid) return;
+          set({ playlistsLoading: true });
+          try {
+            const playlists = await svc.fetchPlaylists(uid);
+            set({ playlists, playlistsLoading: false });
+          } catch (err) {
+            console.error('[useMusicStore] loadPlaylists failed:', err.message);
+            set({ playlistsLoading: false });
+          }
+        },
+
+        createPlaylist: async (name) => {
+          const uid = get().spotifyUserId;
+          const id  = Date.now().toString();
+          // Optimistic update
+          set((s) => ({ playlists: [{ id, name, songs: [] }, ...s.playlists] }));
+          try {
+            await svc.createPlaylist(uid, id, name);
+          } catch (err) {
+            console.error('[useMusicStore] createPlaylist failed:', err.message);
+            // Roll back
+            set((s) => ({ playlists: s.playlists.filter((p) => p.id !== id) }));
+          }
           return id;
         },
 
-        addSongToPlaylist: (playlistId, song) => {
-          set((state) => ({
-            playlists: state.playlists.map((p) =>
-              p.id === playlistId && !p.songs.find((s) => s.id === song.id)
+        addSongToPlaylist: async (playlistId, song) => {
+          const uid = get().spotifyUserId;
+          const playlist = get().playlists.find((p) => p.id === playlistId);
+          const position = playlist ? playlist.songs.length : 0;
+          // Optimistic update
+          set((s) => ({
+            playlists: s.playlists.map((p) =>
+              p.id === playlistId && !p.songs.find((s2) => s2.id === song.id)
                 ? { ...p, songs: [...p.songs, song] }
                 : p,
             ),
           }));
+          try {
+            await svc.addSongToPlaylist(playlistId, uid, song, position);
+          } catch (err) {
+            console.error('[useMusicStore] addSongToPlaylist failed:', err.message);
+            // Roll back
+            set((s) => ({
+              playlists: s.playlists.map((p) =>
+                p.id === playlistId
+                  ? { ...p, songs: p.songs.filter((s2) => s2.id !== song.id) }
+                  : p,
+              ),
+            }));
+          }
         },
 
-        removeSongFromPlaylist: (playlistId, songId) => {
-          set((state) => ({
-            playlists: state.playlists.map((p) =>
+        removeSongFromPlaylist: async (playlistId, songId) => {
+          const prev = get().playlists;
+          // Optimistic update
+          set((s) => ({
+            playlists: s.playlists.map((p) =>
               p.id === playlistId
-                ? { ...p, songs: p.songs.filter((s) => s.id !== songId) }
+                ? { ...p, songs: p.songs.filter((s2) => s2.id !== songId) }
                 : p,
             ),
           }));
+          try {
+            await svc.removeSongFromPlaylist(playlistId, songId);
+          } catch (err) {
+            console.error('[useMusicStore] removeSongFromPlaylist failed:', err.message);
+            set({ playlists: prev });
+          }
         },
 
-        deletePlaylist: (playlistId) => {
-          set((state) => ({
-            playlists: state.playlists.filter((p) => p.id !== playlistId),
-          }));
+        deletePlaylist: async (playlistId) => {
+          const prev = get().playlists;
+          set((s) => ({ playlists: s.playlists.filter((p) => p.id !== playlistId) }));
+          try {
+            await svc.deletePlaylist(playlistId);
+          } catch (err) {
+            console.error('[useMusicStore] deletePlaylist failed:', err.message);
+            set({ playlists: prev });
+          }
         },
 
-        renamePlaylist: (playlistId, name) => {
-          set((state) => ({
-            playlists: state.playlists.map((p) =>
+        renamePlaylist: async (playlistId, name) => {
+          set((s) => ({
+            playlists: s.playlists.map((p) =>
               p.id === playlistId ? { ...p, name } : p,
             ),
           }));
+          try {
+            await svc.renamePlaylist(playlistId, name);
+          } catch (err) {
+            console.error('[useMusicStore] renamePlaylist failed:', err.message);
+          }
         },
       };
     },
 
     {
       name: 'musicapp-auth',
+      // Only persist auth tokens + search history; playlists live in Supabase
       partialize: (state) => ({
         accessToken:   state.accessToken,
         refreshToken:  state.refreshToken,
         expiryTime:    state.expiryTime,
+        spotifyUserId: state.spotifyUserId,
         searchHistory: state.searchHistory,
-        playlists:     state.playlists,
       }),
     },
   ),
