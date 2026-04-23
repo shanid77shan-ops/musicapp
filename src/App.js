@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import useMusicStore           from "./store/useMusicStore";
 import { useSpotifyAuth }      from "./hooks/useSpotifyAuth";
 import { useSpotifyPlayer }    from "./hooks/useSpotifyPlayer";
@@ -56,8 +56,19 @@ function LoginScreen({ onLogin }) {
 
 // ─── Main app ─────────────────────────────────────────────────────────────────
 function MusicApp({ onLogout }) {
-  const { songs } = useMusicStore();
+  const { songs, fetchUserProfile, spotifyUserId } = useMusicStore();
   const [page,        setPage]        = useState('home');
+
+  // Load user profile + playlists from Supabase on mount
+  useEffect(() => {
+    if (!spotifyUserId) {
+      fetchUserProfile();
+    } else {
+      // Already have userId — just load playlists
+      const { loadPlaylists } = useMusicStore.getState();
+      loadPlaylists(spotifyUserId);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [currentSong, setCurrentSong] = useState(null);
   const [modalSong,   setModalSong]   = useState(null);
 
