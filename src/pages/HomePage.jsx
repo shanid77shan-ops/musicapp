@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import useMusicStore from '../store/useMusicStore';
 import SearchBar    from '../components/SearchBar';
 import SongList     from '../components/SongList';
+import { formatDuration } from '../data/songs';
 
 // ─── Genre / mood discovery chips (empty state) ───────────────────────────────
 const GENRES = [
@@ -96,13 +97,92 @@ function TopResultCard({ song, isActive, onSelect }) {
   );
 }
 
+// ─── Pinned playlist card ─────────────────────────────────────────────────────
+function PinnedCard({ playlist, currentSong, onSelect, onUnpin }) {
+  const [open, setOpen] = useState(false);
+  const cover = playlist.songs.find((s) => s.albumArt)?.albumArt;
+
+  return (
+    <div className="rounded-2xl bg-purple-900/20 border border-purple-500/30 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="w-11 h-11 rounded-xl flex-shrink-0 overflow-hidden bg-purple-600/30
+                        flex items-center justify-center">
+          {cover
+            ? <img src={cover} alt={playlist.name} className="w-full h-full object-cover" />
+            : <span className="text-xl">🎵</span>}
+        </div>
+        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setOpen((o) => !o)}>
+          <p className="font-semibold text-white truncate text-sm">{playlist.name}</p>
+          <p className="text-xs text-gray-400">
+            📌 {playlist.songs.length} song{playlist.songs.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="p-1.5 text-gray-400 hover:text-white transition"
+        >
+          <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
+               fill="currentColor" viewBox="0 0 24 24">
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
+        <button
+          onClick={onUnpin}
+          title="Unpin"
+          className="p-1.5 text-purple-400 hover:text-gray-400 transition text-sm"
+        >
+          📌
+        </button>
+      </div>
+
+      {/* Song list (collapsible) */}
+      {open && (
+        <div className="border-t border-purple-500/20">
+          {playlist.songs.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">No songs yet.</p>
+          ) : (
+            <ul className="divide-y divide-white/5 max-h-56 overflow-y-auto">
+              {playlist.songs.map((song) => {
+                const isActive = currentSong?.id === song.id;
+                return (
+                  <li key={song.id}
+                      onClick={() => onSelect(song)}
+                      className={`flex items-center gap-3 px-4 py-2 cursor-pointer transition
+                        ${isActive ? 'bg-purple-600/20' : 'hover:bg-white/5'}`}>
+                    {song.albumArt
+                      ? <img src={song.albumArt} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                      : <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 text-xs">🎵</div>}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-medium truncate ${isActive ? 'text-purple-300' : 'text-white'}`}>
+                        {song.title}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">{song.artist}</p>
+                    </div>
+                    <span className="text-xs text-gray-600 tabular-nums flex-shrink-0">
+                      {formatDuration(song.duration)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Home page ────────────────────────────────────────────────────────────────
 export default function HomePage({ currentSong, onSelect, onAddToPlaylist }) {
   const {
     songs, artists, albums,
     isLoading, error, query, setQuery,
     searchHistory, clearHistory, removeFromHistory,
+    playlists, pinnedPlaylistIds, togglePinPlaylist,
   } = useMusicStore();
+
+  const pinnedPlaylists = playlists.filter((p) => pinnedPlaylistIds.includes(p.id));
 
   const [tab, setTab] = useState('all'); // 'all' | 'songs' | 'artists' | 'albums'
 
@@ -141,6 +221,26 @@ export default function HomePage({ currentSong, onSelect, onAddToPlaylist }) {
       {/* ── Empty state (no query) ── */}
       {!isLoading && !query.trim() && (
         <>
+          {/* Pinned playlists */}
+          {pinnedPlaylists.length > 0 && (
+            <div className="mt-6">
+              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
+                Pinned playlists
+              </h2>
+              <div className="space-y-2">
+                {pinnedPlaylists.map((pl) => (
+                  <PinnedCard
+                    key={pl.id}
+                    playlist={pl}
+                    currentSong={currentSong}
+                    onSelect={onSelect}
+                    onUnpin={() => togglePinPlaylist(pl.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Recent searches */}
           {searchHistory.length > 0 && (
             <div className="mt-6">

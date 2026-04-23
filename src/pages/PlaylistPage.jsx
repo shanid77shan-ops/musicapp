@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import useMusicStore           from '../store/useMusicStore';
-import { formatDuration }      from '../data/songs';
+import useMusicStore      from '../store/useMusicStore';
+import { formatDuration } from '../data/songs';
 
 export default function PlaylistPage({ currentSong, onSelect }) {
-  const { playlists, deletePlaylist, removeSongFromPlaylist, renamePlaylist } = useMusicStore();
+  const {
+    playlists, deletePlaylist, removeSongFromPlaylist, renamePlaylist,
+    pinnedPlaylistIds, togglePinPlaylist,
+  } = useMusicStore();
+
   const [expanded,    setExpanded]    = useState(null);
   const [renamingId,  setRenamingId]  = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -31,19 +35,35 @@ export default function PlaylistPage({ currentSong, onSelect }) {
     );
   }
 
+  // Show pinned first, then rest
+  const pinned   = playlists.filter((p) => pinnedPlaylistIds.includes(p.id));
+  const unpinned = playlists.filter((p) => !pinnedPlaylistIds.includes(p.id));
+  const ordered  = [...pinned, ...unpinned];
+
   return (
     <div className="space-y-3">
-      {playlists.map((pl) => {
-        const isOpen = expanded === pl.id;
-        const cover  = pl.songs.find((s) => s.albumArt)?.albumArt;
+      {ordered.map((pl) => {
+        const isOpen   = expanded === pl.id;
+        const isPinned = pinnedPlaylistIds.includes(pl.id);
+        const cover    = pl.songs.find((s) => s.albumArt)?.albumArt;
 
         return (
           <div key={pl.id}
-               className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+               className={`rounded-2xl border overflow-hidden transition
+                 ${isPinned
+                   ? 'bg-purple-900/20 border-purple-500/40'
+                   : 'bg-white/5 border-white/10'}`}>
+
+            {/* Pinned badge */}
+            {isPinned && (
+              <div className="flex items-center gap-1.5 px-4 pt-2.5">
+                <span className="text-xs text-purple-400 font-medium">📌 Pinned</span>
+              </div>
+            )}
 
             {/* Playlist header */}
             <div className="flex items-center gap-4 px-4 py-3">
-              {/* Cover / icon */}
+              {/* Cover */}
               <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden bg-purple-600/30
                               flex items-center justify-center">
                 {cover
@@ -73,6 +93,17 @@ export default function PlaylistPage({ currentSong, onSelect }) {
 
               {/* Actions */}
               <div className="flex items-center gap-1">
+                {/* Pin toggle */}
+                <button
+                  onClick={() => togglePinPlaylist(pl.id)}
+                  title={isPinned ? 'Unpin from Home' : 'Pin to Home'}
+                  className={`p-2 rounded-lg transition
+                    ${isPinned
+                      ? 'text-purple-400 bg-purple-500/20 hover:bg-purple-500/30'
+                      : 'text-gray-500 hover:text-purple-400 hover:bg-white/10'}`}
+                >
+                  📌
+                </button>
                 <button
                   onClick={() => startRename(pl)}
                   title="Rename"
@@ -110,25 +141,21 @@ export default function PlaylistPage({ currentSong, onSelect }) {
                       const isActive = currentSong?.id === song.id;
                       return (
                         <li key={song.id}
-                            className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition
+                            className={`flex items-center gap-3 px-4 py-2.5 transition
                               ${isActive ? 'bg-purple-600/20' : 'hover:bg-white/5'}`}>
-                          {/* Album art */}
                           {song.albumArt
                             ? <img src={song.albumArt} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
                             : <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 text-sm">🎵</div>
                           }
-                          {/* Info */}
-                          <div className="flex-1 min-w-0" onClick={() => onSelect(song)}>
+                          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelect(song)}>
                             <p className={`text-sm font-medium truncate ${isActive ? 'text-purple-300' : 'text-white'}`}>
                               {song.title}
                             </p>
                             <p className="text-xs text-gray-400 truncate">{song.artist}</p>
                           </div>
-                          {/* Duration */}
                           <span className="text-xs text-gray-500 tabular-nums flex-shrink-0">
                             {formatDuration(song.duration)}
                           </span>
-                          {/* Remove */}
                           <button
                             onClick={() => removeSongFromPlaylist(pl.id, song.id)}
                             className="p-1.5 text-gray-600 hover:text-red-400 transition rounded-lg flex-shrink-0"
