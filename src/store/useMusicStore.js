@@ -45,15 +45,31 @@ const _debouncedSearch = debounce(async (query) => {
   try {
     const token = await _get().getValidToken();
     const { data } = await axios.get(`${SPOTIFY_API}/search`, {
-      params:  { q: query, type: 'track' },
+      params:  { q: query, type: 'track,artist,album', limit: 50 },
       headers: { Authorization: `Bearer ${token}` },
     });
-    const songs = (data.tracks?.items ?? []).map(mapTrack);
-    _set({ songs, isLoading: false });
+    const songs   = (data.tracks?.items  ?? []).map(mapTrack);
+    const artists = (data.artists?.items ?? []).map((a) => ({
+      id:         a.id,
+      name:       a.name,
+      image:      a.images?.[0]?.url ?? null,
+      genres:     a.genres?.slice(0, 2) ?? [],
+      followers:  a.followers?.total ?? 0,
+      spotifyUrl: a.external_urls?.spotify ?? null,
+    }));
+    const albums = (data.albums?.items ?? []).map((al) => ({
+      id:         al.id,
+      name:       al.name,
+      artist:     al.artists.map((a) => a.name).join(', '),
+      image:      al.images?.[1]?.url ?? al.images?.[0]?.url ?? null,
+      year:       al.release_date?.slice(0, 4) ?? '',
+      spotifyUrl: al.external_urls?.spotify ?? null,
+    }));
+    _set({ songs, artists, albums, isLoading: false });
     if (songs.length > 0) _get().addToHistory(query);
   } catch (err) {
     const message = err.response?.data?.error?.message ?? err.message ?? 'Search failed';
-    _set({ error: message, songs: [], isLoading: false });
+    _set({ error: message, songs: [], artists: [], albums: [], isLoading: false });
   }
 }, 500);
 
@@ -127,6 +143,8 @@ const useMusicStore = create(
 
         // ── Search ─────────────────────────────────────────────────────────────
         songs:     [],
+        artists:   [],
+        albums:    [],
         isLoading: false,
         error:     null,
         query:     '',
@@ -146,6 +164,9 @@ const useMusicStore = create(
         },
 
         clearHistory: () => set({ searchHistory: [] }),
+
+        removeFromHistory: (query) =>
+          set((s) => ({ searchHistory: s.searchHistory.filter((h) => h !== query) })),
 
         // ── Playlists (Supabase) ───────────────────────────────────────────────
         playlists:        [],
