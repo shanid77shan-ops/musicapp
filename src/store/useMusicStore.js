@@ -168,6 +168,16 @@ const useMusicStore = create(
         removeFromHistory: (query) =>
           set((s) => ({ searchHistory: s.searchHistory.filter((h) => h !== query) })),
 
+        // ── Pinned playlists ───────────────────────────────────────────────────
+        pinnedPlaylistIds: [],
+
+        togglePinPlaylist: (playlistId) =>
+          set((s) => ({
+            pinnedPlaylistIds: s.pinnedPlaylistIds.includes(playlistId)
+              ? s.pinnedPlaylistIds.filter((id) => id !== playlistId)
+              : [...s.pinnedPlaylistIds, playlistId],
+          })),
+
         // ── Playlists (Supabase) ───────────────────────────────────────────────
         playlists:        [],
         playlistsLoading: false,
@@ -276,11 +286,12 @@ const useMusicStore = create(
       name: 'musicapp-auth',
       // Only persist auth tokens + search history; playlists live in Supabase
       partialize: (state) => ({
-        accessToken:   state.accessToken,
-        refreshToken:  state.refreshToken,
-        expiryTime:    state.expiryTime,
-        spotifyUserId: state.spotifyUserId,
-        searchHistory: state.searchHistory,
+        accessToken:       state.accessToken,
+        refreshToken:      state.refreshToken,
+        expiryTime:        state.expiryTime,
+        spotifyUserId:     state.spotifyUserId,
+        searchHistory:     state.searchHistory,
+        pinnedPlaylistIds: state.pinnedPlaylistIds,
       }),
     },
   ),
