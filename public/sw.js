@@ -1,6 +1,6 @@
 /* MusicApp Service Worker */
 
-const CACHE  = 'musicapp-v1';
+const CACHE  = 'jokerly-v1';
 const ASSETS = [
   '/',
   '/index.html',

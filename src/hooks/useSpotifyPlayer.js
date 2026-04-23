@@ -40,7 +40,7 @@ export function useSpotifyPlayer() {
   useEffect(() => {
     function initPlayer() {
       const player = new window.Spotify.Player({
-        name: 'MusicApp',
+        name: 'Jokerly',
         // SDK calls this any time it needs a fresh token
         getOAuthToken: async (cb) => {
           try {
