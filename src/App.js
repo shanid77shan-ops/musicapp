@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import useMusicStore           from "./store/useMusicStore";
 import { useSpotifyAuth }      from "./hooks/useSpotifyAuth";
 import { useSpotifyPlayer }    from "./hooks/useSpotifyPlayer";
@@ -8,12 +8,17 @@ import NowPlaying              from "./components/NowPlaying";
 import AddToPlaylistModal      from "./components/AddToPlaylistModal";
 import HomePage                from "./pages/HomePage";
 import PlaylistPage            from "./pages/PlaylistPage";
+import SettingsPage            from "./pages/SettingsPage";
+import { ThemeProvider, useTheme } from "./context/ThemeContext";
 
 // ─── Login screen ─────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
+  const { isDark } = useTheme();
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-purple-950
-                    flex flex-col items-center justify-center gap-8 px-6 text-center">
+    <div className={`min-h-screen flex flex-col items-center justify-center gap-8 px-6 text-center
+      ${isDark
+        ? 'bg-gradient-to-br from-gray-950 via-gray-900 to-purple-950'
+        : 'bg-gradient-to-br from-slate-100 via-purple-50 to-indigo-100'}`}>
       <div>
         <div className="flex items-center justify-center gap-3 mb-3">
           <img src="/Icon.png" alt="Jokerly" className="w-14 h-14 rounded-2xl shadow-lg shadow-purple-900/40" />
@@ -22,7 +27,7 @@ function LoginScreen({ onLogin }) {
             Jokerly
           </h1>
         </div>
-        <p className="text-gray-400 max-w-sm">
+        <p className={isDark ? 'text-gray-400 max-w-sm' : 'text-gray-600 max-w-sm'}>
           Search and stream full tracks via Spotify.
           A Premium account is required for full playback.
         </p>
@@ -49,7 +54,7 @@ function LoginScreen({ onLogin }) {
         Connect with Spotify
       </button>
 
-      <p className="text-xs text-gray-600 max-w-xs">
+      <p className={`text-xs max-w-xs ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
         We only request access to your profile and playback.
         Tokens are stored only in your browser.
       </p>
@@ -59,54 +64,97 @@ function LoginScreen({ onLogin }) {
 
 // ─── Main app ─────────────────────────────────────────────────────────────────
 function MusicApp({ onLogout }) {
+  const { isDark } = useTheme();
   const { songs, fetchUserProfile, spotifyUserId } = useMusicStore();
-  const [page,        setPage]        = useState('home');
+  const [page, setPage] = useState('home');
 
-  // Load user profile + playlists from Supabase on mount
+  // Load user profile + playlists on mount
   useEffect(() => {
     if (!spotifyUserId) {
       fetchUserProfile();
     } else {
-      // Already have userId — just load playlists
-      const { loadPlaylists } = useMusicStore.getState();
-      loadPlaylists(spotifyUserId);
+      useMusicStore.getState().loadPlaylists(spotifyUserId);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [currentSong, setCurrentSong] = useState(null);
   const [modalSong,   setModalSong]   = useState(null);
+
+  // Playback modes
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat,  setRepeat]  = useState('off'); // 'off' | 'all' | 'one'
 
   const {
     isReady, playerState, error: playerError,
     playTrack, pause, resume, seek, setVolume,
   } = useSpotifyPlayer();
 
+  // ── Auto-play next when song ends ────────────────────────────────────────
+  const prevPausedRef   = useRef(false);
+  const prevPositionRef = useRef(0);
+  const currentSongRef  = useRef(currentSong);
+  currentSongRef.current = currentSong;
+
+  const handleNext = useCallback(() => {
+    if (!songs.length || !currentSongRef.current) return;
+    const idx = songs.findIndex((s) => s.id === currentSongRef.current.id);
+    let next;
+    if (shuffle) {
+      const pool = songs.filter((_, i) => i !== idx);
+      next = pool[Math.floor(Math.random() * pool.length)] ?? songs[0];
+    } else {
+      next = songs[(idx + 1) % songs.length];
+    }
+    setCurrentSong(next);
+    playTrack(next.id);
+  }, [songs, shuffle, playTrack]);
+
+  const handlePrev = useCallback(() => {
+    if (!songs.length || !currentSongRef.current) return;
+    const idx  = songs.findIndex((s) => s.id === currentSongRef.current.id);
+    const prev = songs[idx <= 0 ? songs.length - 1 : idx - 1];
+    setCurrentSong(prev);
+    playTrack(prev.id);
+  }, [songs, playTrack]);
+
+  useEffect(() => {
+    if (!playerState) return;
+    const wasPaused = prevPausedRef.current;
+    if (!wasPaused && playerState.paused && playerState.position === 0) {
+      // Song just ended
+      if (repeat === 'one' && currentSongRef.current) {
+        playTrack(currentSongRef.current.id);
+      } else if (repeat === 'all' || shuffle) {
+        handleNext();
+      } else if (repeat === 'off') {
+        handleNext();
+      }
+    }
+    prevPausedRef.current   = playerState.paused;
+    prevPositionRef.current = playerState.position;
+  }, [playerState, repeat, handleNext, playTrack, shuffle]);
+
   function handleSelect(song) {
     setCurrentSong(song);
     playTrack(song.id);
   }
 
-  function handleNext() {
-    if (!songs.length) return;
-    const idx  = currentSong ? songs.findIndex((s) => s.id === currentSong.id) : -1;
-    const next = songs[(idx + 1) % songs.length];
-    setCurrentSong(next);
-    playTrack(next.id);
+  function handleShuffleToggle() { setShuffle((s) => !s); }
+  function handleRepeatToggle()  {
+    setRepeat((r) => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
   }
 
-  function handlePrev() {
-    if (!songs.length) return;
-    const idx     = currentSong ? songs.findIndex((s) => s.id === currentSong.id) : -1;
-    const prevIdx = idx <= 0 ? songs.length - 1 : idx - 1;
-    const prev    = songs[prevIdx];
-    setCurrentSong(prev);
-    playTrack(prev.id);
-  }
+  const bg = isDark
+    ? 'bg-gradient-to-br from-gray-950 via-gray-900 to-purple-950 text-white'
+    : 'bg-gradient-to-br from-slate-100 via-purple-50 to-indigo-100 text-gray-900';
+
+  const headerBorder = isDark ? 'border-white/5' : 'border-gray-200';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-purple-950 text-white">
+    <div className={`min-h-screen ${bg}`}>
 
       {/* ── Header ── */}
-      <header className="px-6 pt-8 pb-2">
+      <header className={`px-6 pt-8 pb-2 border-b ${headerBorder}`}>
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -116,22 +164,13 @@ function MusicApp({ onLogout }) {
                 Jokerly
               </h1>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                isReady
-                  ? 'text-green-400 border-green-500/30 bg-green-500/10'
-                  : 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10 animate-pulse'
-              }`}>
-                {isReady ? '● Connected' : '◌ Connecting…'}
-              </span>
-              <button
-                onClick={onLogout}
-                className="text-xs text-gray-500 hover:text-gray-300 transition px-2 py-1
-                           rounded border border-white/10 hover:border-white/20"
-              >
-                Disconnect
-              </button>
-            </div>
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${
+              isReady
+                ? 'text-green-400 border-green-500/30 bg-green-500/10'
+                : 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10 animate-pulse'
+            }`}>
+              {isReady ? '● Connected' : '◌ Connecting…'}
+            </span>
           </div>
 
           {playerError && (
@@ -141,9 +180,7 @@ function MusicApp({ onLogout }) {
               {playerError === 'REAUTH_REQUIRED' ? (
                 <div>
                   <p className="font-medium">New permissions required</p>
-                  <p className="text-yellow-400 text-xs mt-0.5">
-                    Please reconnect to grant the missing scopes.
-                  </p>
+                  <p className="text-yellow-400 text-xs mt-0.5">Please reconnect to grant the missing scopes.</p>
                   <button onClick={onLogout}
                     className="mt-2 px-3 py-1 text-xs rounded-full bg-yellow-500 hover:bg-yellow-400
                                text-black font-semibold transition">
@@ -159,20 +196,10 @@ function MusicApp({ onLogout }) {
       </header>
 
       {/* ── Page content ── */}
-      <main className="px-6 pb-44 max-w-3xl mx-auto">
-        {page === 'home' && (
-          <HomePage
-            currentSong={currentSong}
-            onSelect={handleSelect}
-            onAddToPlaylist={setModalSong}
-          />
-        )}
-        {page === 'playlists' && (
-          <PlaylistPage
-            currentSong={currentSong}
-            onSelect={handleSelect}
-          />
-        )}
+      <main className="px-6 pb-52 max-w-3xl mx-auto pt-4">
+        {page === 'home'      && <HomePage currentSong={currentSong} onSelect={handleSelect} onAddToPlaylist={setModalSong} />}
+        {page === 'playlists' && <PlaylistPage currentSong={currentSong} onSelect={handleSelect} />}
+        {page === 'settings'  && <SettingsPage onLogout={onLogout} />}
       </main>
 
       {/* ── Nav ── */}
@@ -180,7 +207,7 @@ function MusicApp({ onLogout }) {
 
       {/* ── Player ── */}
       <div className="fixed bottom-0 left-0 right-0 z-50">
-        <div className="absolute left-4 bottom-[52px] hidden sm:block">
+        <div className="absolute left-4 bottom-[110px] hidden sm:block">
           <NowPlaying song={currentSong} />
         </div>
         <Player
@@ -194,23 +221,32 @@ function MusicApp({ onLogout }) {
           onNext={handleNext}
           onPrev={handlePrev}
           onAddToPlaylist={setModalSong}
+          shuffle={shuffle}
+          onShuffleToggle={handleShuffleToggle}
+          repeat={repeat}
+          onRepeatToggle={handleRepeatToggle}
         />
       </div>
 
       {/* ── Add-to-playlist modal ── */}
       {modalSong && (
-        <AddToPlaylistModal
-          song={modalSong}
-          onClose={() => setModalSong(null)}
-        />
+        <AddToPlaylistModal song={modalSong} onClose={() => setModalSong(null)} />
       )}
     </div>
   );
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export default function App() {
+function AppInner() {
   const { login, logout, isAuthenticated } = useSpotifyAuth();
   if (!isAuthenticated) return <LoginScreen onLogin={login} />;
   return <MusicApp onLogout={logout} />;
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  );
 }
