@@ -196,7 +196,7 @@ function MusicApp({ onLogout }) {
       </header>
 
       {/* ── Page content ── */}
-      <main className="px-6 pb-52 max-w-3xl mx-auto pt-4">
+      <main className="px-6 pb-60 max-w-3xl mx-auto pt-4">
         {page === 'home'      && <HomePage currentSong={currentSong} onSelect={handleSelect} onAddToPlaylist={setModalSong} />}
         {page === 'playlists' && <PlaylistPage currentSong={currentSong} onSelect={handleSelect} />}
         {page === 'settings'  && <SettingsPage onLogout={onLogout} />}
