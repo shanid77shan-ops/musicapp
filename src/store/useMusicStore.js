@@ -45,7 +45,7 @@ const _debouncedSearch = debounce(async (query) => {
   try {
     const token = await _get().getValidToken();
     const { data } = await axios.get(`${SPOTIFY_API}/search`, {
-      params:  { q: query, type: 'track,artist,album', limit: 50 },
+      params:  { q: query, type: 'track,artist,album', limit: 20 },
       headers: { Authorization: `Bearer ${token}` },
     });
     const songs   = (data.tracks?.items  ?? []).map(mapTrack);
@@ -68,7 +68,10 @@ const _debouncedSearch = debounce(async (query) => {
     _set({ songs, artists, albums, isLoading: false });
     if (songs.length > 0) _get().addToHistory(query);
   } catch (err) {
-    const message = err.response?.data?.error?.message ?? err.message ?? 'Search failed';
+    const status  = err.response?.status;
+    const message = status === 401 || status === 400
+      ? 'Session expired — please log out and reconnect Spotify'
+      : (err.response?.data?.error?.message ?? err.message ?? 'Search failed');
     _set({ error: message, songs: [], artists: [], albums: [], isLoading: false });
   }
 }, 500);
