@@ -45,7 +45,7 @@ const _debouncedSearch = debounce(async (query) => {
   try {
     const token = await _get().getValidToken();
     const { data } = await axios.get(`${SPOTIFY_API}/search`, {
-      params:  { q: query, type: 'track,artist,album', limit: 20 },
+      params:  { q: query, type: 'track,artist,album', limit: 10 },
       headers: { Authorization: `Bearer ${token}` },
     });
     const songs   = (data.tracks?.items  ?? []).map(mapTrack);
@@ -144,6 +144,45 @@ const useMusicStore = create(
           }
         },
 
+        // ── Preferences & onboarding ───────────────────────────────────────────
+        onboardingComplete: false,
+        languagePreference: null,
+        favoriteArtists:    [],
+        suggestions:        [],
+        suggestionsLoading: false,
+
+        setLanguagePreference: (lang) => set({ languagePreference: lang }),
+        setFavoriteArtists:    (list) => set({ favoriteArtists: list }),
+        completeOnboarding:    ()     => set({ onboardingComplete: true }),
+
+        fetchSuggestions: async () => {
+          const { favoriteArtists } = get();
+          if (!favoriteArtists.length) return;
+          set({ suggestionsLoading: true });
+          try {
+            const token = await get().getValidToken();
+            const picks = favoriteArtists.slice(0, 5);
+            const results = await Promise.all(
+              picks.map((a) =>
+                axios.get(`${SPOTIFY_API}/search`, {
+                  params:  { q: `artist:${a.name}`, type: 'track', limit: 6 },
+                  headers: { Authorization: `Bearer ${token}` },
+                }).then((r) => (r.data.tracks?.items ?? []).map(mapTrack))
+              )
+            );
+            const seen = new Set();
+            const songs = results.flat().filter((s) => {
+              if (seen.has(s.id)) return false;
+              seen.add(s.id);
+              return true;
+            });
+            set({ suggestions: songs, suggestionsLoading: false });
+          } catch (err) {
+            console.error('[useMusicStore] fetchSuggestions failed:', err.message);
+            set({ suggestionsLoading: false });
+          }
+        },
+
         // ── Search ─────────────────────────────────────────────────────────────
         songs:     [],
         artists:   [],
@@ -154,6 +193,24 @@ const useMusicStore = create(
 
         setQuery: (query) => { set({ query }); _debouncedSearch(query); },
         searchTracks: (query) => _debouncedSearch(query),
+
+        // ── Onboarding ────────────────────────────────────────────────────────
+        languagePreference: null,
+        favoriteArtists:    [],
+        onboardingComplete: false,
+
+        setLanguagePreference: (lang)   => set({ languagePreference: lang }),
+        setFavoriteArtists:   (artists) => set({ favoriteArtists: artists }),
+        completeOnboarding:   ()        => set({ onboardingComplete: true }),
+
+        fetchSuggestions: () => {
+          const lang = get().languagePreference;
+          const queries = {
+            hi: 'bollywood hits', ko: 'kpop hits', es: 'reggaeton',
+            pt: 'musica brasileira', fr: 'french pop', ar: 'arabic pop', ja: 'j-pop',
+          };
+          _debouncedSearch(queries[lang] ?? 'top hits');
+        },
 
         // ── Search history (persisted to localStorage) ─────────────────────────
         searchHistory: [],
@@ -289,12 +346,16 @@ const useMusicStore = create(
       name: 'jokerly-auth',
       // Only persist auth tokens + search history; playlists live in Supabase
       partialize: (state) => ({
-        accessToken:       state.accessToken,
-        refreshToken:      state.refreshToken,
-        expiryTime:        state.expiryTime,
-        spotifyUserId:     state.spotifyUserId,
-        searchHistory:     state.searchHistory,
-        pinnedPlaylistIds: state.pinnedPlaylistIds,
+        accessToken:        state.accessToken,
+        refreshToken:       state.refreshToken,
+        expiryTime:         state.expiryTime,
+        spotifyUserId:      state.spotifyUserId,
+        searchHistory:      state.searchHistory,
+        pinnedPlaylistIds:  state.pinnedPlaylistIds,
+        onboardingComplete: state.onboardingComplete,
+        languagePreference: state.languagePreference,
+        favoriteArtists:    state.favoriteArtists,
+        suggestions:        state.suggestions,
       }),
     },
   ),
